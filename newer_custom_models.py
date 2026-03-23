@@ -48,10 +48,6 @@ class ChaosUnitClassifier(nn.Module):
         logits = self.output_layer(h_t)  # [batch_size, num_classes]
         return logits
 
-
-#######
-# This is new archetype for making models
-
 class S5InspiredRNN(nn.Module):
     def __init__(self, input_size, hidden_size, batch_first=True):
         super().__init__()
@@ -129,94 +125,10 @@ class RNNMockingTransformer(nn.Module):
         #logits = self.fc(x[:, -1, :]) # This line was to run experiment without RNN
 
         return logits
-    
-
-"""
-Known working version that I do not want to risk editing and losing
-class RNNMockingTransformer(nn.Module):
-    def __init__(self, vocab_size, input_dim, hidden_dim, num_classes=1):
-        super().__init__()
-        self.input_proj = nn.Linear(input_dim, hidden_dim) # instead of embedding
-        self.attn = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=4, batch_first=True)
-        self.rnn = nn.RNN(hidden_dim, hidden_dim, batch_first=True)
-        self.fc = nn.Linear(hidden_dim, num_classes)
-        #self.sigmoid = nn.Sigmoid()  # <- explicit sigmoid
-
-    def generate_causal_mask(self, seq_len, device):
-        mask = torch.triu(torch.ones(seq_len, seq_len, device=device), diagonal=1)
-        mask = mask.masked_fill(mask == 1, float('-inf'))
-        return mask
-
-
-    def forward(self, input_ids, attention_mask=None, hidden=None):
-        x = input_ids # needed because no embedding layer
-        if x.dim() == 4:  # (B, T, K, D)
-            x = x.sum(dim=2)  # -> (B, T, D)
-
-        # Handle edge case (B, D) → (B, 1, D)
-        if x.dim() == 2:
-            x = x.unsqueeze(1)
-        
-        x = self.input_proj(x.float())
-
-        _, T, _ = x.size() # B, T, D
-        attn_mask = self.generate_causal_mask(T, x.device)
-        attn_output, _ = self.attn(x, x, x, attn_mask=attn_mask)
-        x = x + attn_output  # residual connection
-        
-        output, hidden = self.rnn(x, hidden)
-        logits = self.fc(output[:, -1, :])
-
-        return logits
-"""
 
 
 from mamba_ssm import Mamba  # or Mamba2
 import math
-"""
-class MyMambaModel(nn.Module):
-    def __init__(self, input_dim, model_dim, num_classes, mamba_state_dim, mamba_conv_width=4, mamba_expand=2):
-        super().__init__()
-        # optional embedding / input projection
-        self.input_proj = nn.Linear(input_dim, model_dim) if input_dim != model_dim else nn.Identity()
-        # Mamba backbone
-        self.mamba = Mamba(
-            d_model=model_dim,
-            d_state=mamba_state_dim,
-            d_conv=mamba_conv_width,
-            expand=mamba_expand,
-        )
-        # classifier head
-        self.classifier = nn.Linear(model_dim, num_classes)
-        self.sigmoid = nn.Sigmoid()
-        
-    def forward(self, input_ids, attention_mask=None, return_hidden=False):
-        #x: tensor [batch, seq_len, input_dim] (or whatever your input is)
-        #return_hidden: if True, return intermediate hidden state (if Mamba supports it)
-        
-        x = input_ids.float()
-
-        # If doc_ret (K=2 per timestep), combine along feature axis
-        if x.dim() == 4:  # (B, T, K, D)
-            x = x.sum(dim=2)  # -> (B, T, D)
-
-        # Handle edge case (B, D) → (B, D, 1)
-        if x.dim() == 2:
-            x = x.unsqueeze(-1)
-
-        h = self.input_proj(x)
-        # Mamba block
-        out = self.mamba(h)  # shape [batch, seq_len, model_dim]
-
-        # maybe take last time-step, or average, whatever your task needs
-        # Suppose classification on last step:
-        last = out[:, -1, :]  # shape [batch, model_dim]
-        logits = self.classifier(last)  # shape [batch, num_classes]
-        probs = self.sigmoid(logits)  # professor wants explicit sigmoid
-        if return_hidden:
-            return probs, out
-        return probs
-"""
 
 class MyMambaModel(nn.Module):
     def __init__(self,
@@ -462,75 +374,7 @@ class ProjToMultiLayerRNN(nn.Module):
         logits = self.fc(x[:, -1, :])
         return logits
 
-"""
-class MurmurHashAsRNN(nn.Module):
-    def __init__(self, hidden_dim):
-        super().__init__()
-        # Learnable constants
-        self.c1 = nn.Parameter(torch.randn(hidden_dim))
-        self.c2 = nn.Parameter(torch.randn(hidden_dim))
-        self.c3 = nn.Parameter(torch.randn(hidden_dim))
-        self.c4 = nn.Parameter(torch.randn(hidden_dim))
 
-        # Learnable "rotation" parameters
-        self.r1 = nn.Parameter(torch.tensor(7.0))
-        self.r2 = nn.Parameter(torch.tensor(13.0))
-
-    def forward(self, x, hidden=None):
-        # x: (B, D)
-        if hidden is None:
-            hidden = torch.zeros_like(x)
-
-        # Continuous multiplications (Murmur-like)
-        x = x * self.c1
-
-        # Learnable rotation 1 (rounded)
-        shift1 = int(torch.round(self.r1).item())
-        x = torch.roll(x, shifts=shift1, dims=-1)
-
-        x = x * self.c2
-
-        # Differentiable "xor"-like mixing
-        x = torch.tanh(x + hidden)
-
-        # Learnable rotation 2 (rounded)
-        shift2 = int(torch.round(self.r2).item())
-        x = torch.roll(x, shifts=shift2, dims=-1)
-
-        x = x * self.c3 + self.c4
-        x = torch.tanh(x)  # stabilization
-
-        return x
-
-
-class RNNMockingMurmurHash3(nn.Module):
-    def __init__(self, input_dim, hidden_dim, num_classes=2):
-        super().__init__()
-        self.murmur = MurmurHashAsRNN(hidden_dim)
-        self.input_proj = nn.Linear(1, hidden_dim)
-        self.fc = nn.Linear(hidden_dim, num_classes)
-
-    def forward(self, input_ids, attention_mask=None):
-        #input_ids: (B, T, D)
-        
-        x = input_ids
-        x = x.float()
-
-        # Always reduce (B, T, K, D) -> (B, T, D)
-        if x.dim() == 4:
-            x = x.sum(dim=2)
-
-        # Convert (B, D) -> (B, 1, D)
-        if x.dim() == 2:
-            x = x.unsqueeze(1)
-        x = self.input_proj(x)
-        h = None
-        for t in range(x.size(1)):
-            h = self.murmur(x[:, t, :], h)
-
-        logits = self.fc(h)  # h is (B, hidden_dim)
-        return logits
-"""
 class MurmurHashAsRNN(nn.Module):
     def __init__(self, hidden_dim, init_angle_r1=0.0, init_angle_r2=0.0):
         super().__init__()
