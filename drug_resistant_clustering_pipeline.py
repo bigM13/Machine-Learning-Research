@@ -238,3 +238,43 @@ for cid, info in cluster_summary.items():
     print("")
 
 print("Analysis complete.")
+
+############################################
+# PCA VISUALIZATION
+############################################
+
+from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
+# Apply PCA to embeddings
+pca_2d = PCA(n_components=2)
+embeddings_2d = pca_2d.fit_transform(embeddings)
+
+pca_3d = PCA(n_components=3)
+embeddings_3d = pca_3d.fit_transform(embeddings)
+
+# 2D visualization
+plt.figure(figsize=(10, 8))
+scatter = plt.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], 
+                     c=cluster_ids, cmap='tab10', alpha=0.6, s=20)
+plt.xlabel(f'PC1 ({pca_2d.explained_variance_ratio_[0]:.2%} variance)')
+plt.ylabel(f'PC2 ({pca_2d.explained_variance_ratio_[1]:.2%} variance)')
+plt.title('Autoencoder Embeddings - PCA 2D')
+plt.colorbar(scatter, label='Cluster')
+plt.savefig('pca_2d_clusters.png', dpi=150, bbox_inches='tight')
+plt.close()
+
+# 3D visualization
+fig = plt.figure(figsize=(10, 8))
+ax = fig.add_subplot(111, projection='3d')
+scatter = ax.scatter(embeddings_3d[:, 0], embeddings_3d[:, 1], embeddings_3d[:, 2],
+                    c=cluster_ids, cmap='tab10', alpha=0.6, s=20)
+ax.set_xlabel(f'PC1 ({pca_3d.explained_variance_ratio_[0]:.2%})')
+ax.set_ylabel(f'PC2 ({pca_3d.explained_variance_ratio_[1]:.2%})')
+ax.set_zlabel(f'PC3 ({pca_3d.explained_variance_ratio_[2]:.2%})')
+ax.set_title('Autoencoder Embeddings - PCA 3D')
+plt.savefig('pca_3d_clusters.png', dpi=150, bbox_inches='tight')
+plt.close()
+
+print(f"\nPCA explained variance: {pca_2d.explained_variance_ratio_.sum():.2%}")
